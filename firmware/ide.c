@@ -240,7 +240,8 @@ static void ATA_IdentifyDevice(unsigned char* tfr, int unit, char packet)
 	WriteTaskFile(0, tfr[2], tfr[3], tfr[4], tfr[5], tfr[6]);
 	WriteStatus(IDE_STATUS_RDY); // pio in (class 1) command type
 	sendsector(sector_buffer);
-	WriteStatus(IDE_STATUS_END | IDE_STATUS_IRQ);
+//	WriteStatus(IDE_STATUS_END | IDE_STATUS_IRQ);
+	WriteStatus(IDE_STATUS_IRQ);
 }
 
 
@@ -305,11 +306,12 @@ static inline void ATA_ReadSectors(unsigned char* tfr, int unit, int multiple, i
 	int	sector_count = tfr[2];
 	if(sector_count == 0) sector_count=0x100;
 
-//	printf("LBAMode: %d\n",lbamode);
+	//	printf("LBAMode: %d\n",lbamode);
 
 	lba=chs2lba(cylinder, head, sector, unit, lbamode);
-	//  hdd_debugf("IDE%d: read %s, %d.%d.%d:%d, %d", unit, (lbamode ? "LBA" : "CHS"), cylinder, head, sector, lba, sector_count);
-//	printf("Rd %d, %d, %d, %d, %d, %d\n",cylinder,head,sector,unit,lbamode,sector_count);
+	//	hdd_debugf("IDE%d: read %s, %d.%d.%d:%d, %d", unit, (lbamode ? "LBA" : "CHS"), cylinder, head, sector, lba, sector_count);
+	//	printf("Rd %d, %d, %d (lba: %d), %d, %d, %d\n",cylinder,head,sector,lba,unit,lbamode,sector_count);
+
 
 	while (sector_count)
 	{
@@ -375,9 +377,10 @@ static inline void ATA_ReadSectors(unsigned char* tfr, int unit, int multiple, i
 		}
 	}
 	if(verify)
-		WriteStatus(IDE_STATUS_END|IDE_STATUS_IRQ);
-	else
-		WriteStatus(IDE_STATUS_END);
+		WriteStatus(IDE_STATUS_IRQ);
+//		WriteStatus(IDE_STATUS_END|IDE_STATUS_IRQ);
+//	else
+//		WriteStatus(IDE_STATUS_END);
 }
 
 
@@ -402,7 +405,8 @@ static inline void ATA_WriteSectors(unsigned char* tfr, int unit, int multiple)
 	// write sectors
 	WriteStatus(IDE_STATUS_REQ); // pio out (class 2) command type
 	//  hdd_debugf("IDE%d: write %s, %d.%d.%d:%d, %d", unit, (lbamode ? "LBA" : "CHS"), cylinder, head, sector, lba, sector_count);
-
+	//	printf("Wr %d, %d, %d (lba: %d), %d, %d, %d\n",cylinder,head,sector,lba, unit,lbamode,sector_count);
+	
 	FileSeek(&hdf[unit].file,lba<<9);
 
 	while (sector_count) {
@@ -424,6 +428,7 @@ static inline void ATA_WriteSectors(unsigned char* tfr, int unit, int multiple)
 //			spi_block_read(sector_buffer);
 			DisableFpga();
 
+//			hexdump(sector_buffer,512);
 			FileWriteSector(&hdf[unit].file,sector_buffer);
 			FileNextSector(&hdf[unit].file,1);
 //			f_write(&hdf[unit].idxfile->file, sector_buffer, 512*block_size, &bw);
@@ -548,7 +553,7 @@ static void SendHDFCfg()
 		cfg|=4;
 #endif
 #if CONFIG_IDE_UNITS > 3
-	if(hdf[2].file.size)
+	if(hdf[3].file.size)
 		cfg|=8;
 #endif
 	EnableFpga();
@@ -594,12 +599,17 @@ __weak void HandleHDD()
 
 		for (i = 0; i < 8; i++) {
 			tfr[i] = SPI(0);
+#if CONFIG_IDE_UNITS > 2
+			if (i == 6) cs1 = tfr[i] & 0x01;
+#endif			
 //			if (i == 6 && cs1ena) cs1 = tfr[i] & 0x01;
 			tfr[i] = SPI(0);
 		}
 
 		DisableFpga();
 		unit = (cs1 << 1) | ((tfr[6] & 0x10) >> 4); // primary/secondary/master/slave selection
+
+//		printf("IDE %x, u %d\n",tfr[7],unit);
 
 		if (!hdf[unit].file.size) {
 //			hdd_debugf("IDE%d: not present", unit);
